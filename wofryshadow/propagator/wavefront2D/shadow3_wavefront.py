@@ -37,8 +37,6 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
             if pixels_v == None:
                 pixels_v = pixels_estimated
 
-
-
         # guess definition limits (if not defined)
         if range_h==None or range_v==None:
             intensity_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v,
@@ -60,7 +58,6 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         intensity_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=23,
                                           xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
                                           nolost=1, calculate_widths=1)
-
 
         wavelength = self.get_mean_wavelength() # meters
 
