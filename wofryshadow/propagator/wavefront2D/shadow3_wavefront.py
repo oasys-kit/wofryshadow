@@ -25,7 +25,7 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
         return 1e-10*wavelength_in_angstroms.mean()
 
-    def toGenericWavefront(self, pixels_h=None, pixels_v=None, range_h=None, range_v=None, conversion_factor=1e-2):
+    def toGenericWavefront(self, pixels_h=None, pixels_v=None, range_h=None, range_v=None, shadow_to_meters=1e-2):
 
         # guess number of pixels (if not defined)
         if pixels_h == None or pixels_v == None:
@@ -61,8 +61,8 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
         wavelength = self.get_mean_wavelength() # meters
 
-        x = intensity_histogram['bin_h_center']*conversion_factor # in meters
-        y = intensity_histogram['bin_v_center']*conversion_factor # in meters
+        x = intensity_histogram['bin_h_center']*shadow_to_meters # in meters
+        y = intensity_histogram['bin_v_center']*shadow_to_meters # in meters
 
         wavefront = GenericWavefront2D.initialize_wavefront_from_range(x[0],
                                                                        x[-1],
@@ -81,10 +81,10 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
         xp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=4,
                                    xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
-                                   nolost=1, calculate_widths=1)
+                                   nolost=1)
         yp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=6,
                                    xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
-                                   nolost=1, calculate_widths=1)
+                                   nolost=1)
 
         k_modulus = 2*numpy.pi/wavelength # meters
 
@@ -96,6 +96,7 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         for i in range(0, pixels_h):
             for j in range(0, pixels_v):
                 complex_amplitude_phase[i, j] = numpy.trapz(kx[:, j], x) + numpy.trapz(ky[i, :], y)
+                #complex_amplitude_phase[i, j] = kx[i, j]*x[i] + ky[i, j]*y[j]
 
         complex_amplitude = complex_amplitude_modulus * numpy.exp(1j*complex_amplitude_phase)
 
@@ -126,7 +127,9 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
 
     @classmethod
-    def fromGenericWavefront(cls, wavefront):
+    def fromGenericWavefront(cls, wavefront, shadow_to_meters = 1e-2):
+
+        meters_to_shadow = 1/shadow_to_meters
 
         w_intensity = wavefront.get_intensity()
         w_x = wavefront.get_mesh_x()
@@ -134,20 +137,18 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         w_phase = wavefront.get_phase()
         w_wavelength = wavefront.get_wavelength() # meters
         k_modulus =  2 * numpy.pi / w_wavelength # m-1
-
         nrays = w_intensity.size
+
         wf3 = SHADOW3Wavefront(N=nrays)
 
-        print (w_x, w_y)
-
         # positions
-        wf3.rays[:, 0] = w_x.flatten() * 1e2 # cm
-        wf3.rays[:, 2] = w_y.flatten() * 1e2 # cm
+        wf3.rays[:, 0] = w_x.flatten() * meters_to_shadow # cm
+        wf3.rays[:, 2] = w_y.flatten() * meters_to_shadow # cm
 
         # Lost ray flag
         wf3.rays[:, 9] = 1.0
         # energy
-        wf3.rays[:, 10] = k_modulus * 1e-2 # cm-1
+        wf3.rays[:, 10] = k_modulus / meters_to_shadow # cm-1
         # Ray index
         wf3.rays[:, 11] = numpy.arange(1, nrays+1, 1)
 
@@ -161,7 +162,7 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         dy = numpy.abs(w_y[0, 1] - w_y[0, 0])
 
         # The k direction is obtained from the gradient of the phase
-        kx, kz = numpy.gradient(w_phase, dx, dy, edge_order=2)
+        kx, kz = numpy.gradient(w_phase, dx, dy, edge_order=1)
 
         nx = kx / k_modulus
         nz = kz / k_modulus
