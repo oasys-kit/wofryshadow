@@ -1,4 +1,5 @@
 import numpy
+import scipy.signal as signal
 
 import Shadow
 
@@ -15,11 +16,13 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
     def initialize_from_shadow3_beam(cls,shadow3_beam):
         wf3 = SHADOW3Wavefront(N=shadow3_beam.nrays())
         wf3.rays = shadow3_beam.rays.copy()
+
         return wf3
 
 
     def get_mean_wavelength(self, nolost=True): # meters
-        wavelength_in_angstroms = self.getshcol(19,nolost=nolost)
+        wavelength_in_angstroms = self.getshcol(19, nolost=nolost)
+
         return 1e-10*wavelength_in_angstroms.mean()
 
     def toGenericWavefront(self, pixels_h=None, pixels_v=None, range_h=None, range_v=None, conversion_factor=1e-2):
@@ -34,17 +37,25 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
             if pixels_v == None:
                 pixels_v = pixels_estimated
 
+
+
         # guess definition limits (if not defined)
         if range_h==None or range_v==None:
             intensity_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v,
                                               nolost=1, calculate_widths=1)
-
             if range_h==None:
-                range_h = 3 * intensity_histogram['fwhm_h']
+                try:
+                    range_h = 3 * intensity_histogram['fwhm_h']
+                except:
+                    shadow_x = intensity_histogram['bin_h_center']
+                    range_h = numpy.abs(shadow_x[-1] - shadow_x[0])
 
             if range_v == None:
-                range_v = 3 * intensity_histogram['fwhm_v']
-
+                try:
+                    range_v = 3 * intensity_histogram['fwhm_v']
+                except:
+                    shadow_y = intensity_histogram['bin_v_center']
+                    range_v = numpy.abs(shadow_y[-1] - shadow_y[0])
 
         intensity_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=23,
                                           xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
@@ -64,7 +75,10 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
                                                                        wavelength=wavelength)
 
         # TODO: check normalization and add smoothing
-        complex_amplitude_modulus = numpy.sqrt(intensity_histogram['histogram'] / intensity_histogram['histogram'].max() )
+        complex_amplitude_modulus = self.smooth_amplitude(amplitude=numpy.sqrt(intensity_histogram['histogram'] / intensity_histogram['histogram'].max()),
+                                                          pixels_h=pixels_h,
+                                                          pixels_v=pixels_v)
+
 
         # TODO: phase must be calculate from directions !!!!!
 
@@ -74,9 +88,6 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         yp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=6,
                                    xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
                                    nolost=1, calculate_widths=1)
-        #normalization_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=0,
-        #                                      xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
-        #                                      nolost=1, calculate_widths=1)
 
         k_modulus = 2*numpy.pi/wavelength # meters
 
@@ -89,16 +100,33 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
             for j in range(0, pixels_v):
                 complex_amplitude_phase[i, j] = numpy.trapz(kx[:, j], x) + numpy.trapz(ky[i, :], y)
 
-        #nh = normalization_histogram['histogram']
-        #nh[numpy.where(nh < 1.0)] = 1.0 # avoid divide by 0
-        #
-        #complex_amplitude_phase = (kx_histogram['histogram'] + ky_histogram['histogram']) / nh
-
         complex_amplitude = complex_amplitude_modulus * numpy.exp(1j*complex_amplitude_phase)
 
         wavefront.set_complex_amplitude(complex_amplitude)
 
         return wavefront
+
+    def smooth_amplitude(self, amplitude, pixels_h, pixels_v):
+        kern_hanning = signal.hanning(max(5, int(pixels_h/10)))[:, None]
+        kern_hanning /= kern_hanning.sum()
+
+        kern_hanning_2 = signal.hanning(max(5, int(pixels_v/10)))[None, :]
+        kern_hanning_2 /= kern_hanning.sum()
+
+        return self.rebin(array=signal.convolve(signal.convolve(amplitude,
+                                                                kern_hanning),
+                                                kern_hanning_2),
+                          new_shape=(pixels_h, pixels_v))
+
+    def rebin(self, array=numpy.zeros((100, 100)), new_shape=(100, 100)):
+        assert len(array.shape) == len(new_shape)
+
+        slices = [slice(0, old, float(old) / new) for old, new in zip(array.shape, new_shape)]
+        coordinates = numpy.mgrid[slices]
+        indices = coordinates.astype('i')   #choose the biggest smaller integer index
+
+        return array[tuple(indices)]
+
 
     @classmethod
     def fromGenericWavefront(cls, wavefront):
@@ -150,8 +178,7 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
     @classmethod
     def decorateSHADOW3WF(self, shadow3_beam):
-        wavefront = SHADOW3Wavefront.initialize_from_shadow3_beam(shadow3_beam)
-        return wavefront
+        return SHADOW3Wavefront.initialize_from_shadow3_beam(shadow3_beam)
 
     def get_dimension(self):
         return WavefrontDimension.TWO
