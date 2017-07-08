@@ -95,8 +95,8 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
         for i in range(0, pixels_h):
             for j in range(0, pixels_v):
-                complex_amplitude_phase[i, j] = numpy.trapz(kx[:, j], x) + numpy.trapz(ky[i, :], y)
-                #complex_amplitude_phase[i, j] = kx[i, j]*x[i] + ky[i, j]*y[j]
+                #complex_amplitude_phase[i, j] = numpy.trapz(kx[:, j], x) + numpy.trapz(ky[i, :], y)
+                complex_amplitude_phase[i, j] = kx[i, j]*x[i] + ky[i, j]*y[j]
 
         complex_amplitude = complex_amplitude_modulus * numpy.exp(1j*complex_amplitude_phase)
 
@@ -162,7 +162,7 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         dy = numpy.abs(w_y[0, 1] - w_y[0, 0])
 
         # The k direction is obtained from the gradient of the phase
-        kx, kz = numpy.gradient(w_phase, dx, dy, edge_order=1)
+        kx, kz = numpy.gradient(w_phase, dx, dy, edge_order=2)
 
         nx = kx / k_modulus
         nz = kz / k_modulus
