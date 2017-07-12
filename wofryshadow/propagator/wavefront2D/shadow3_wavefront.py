@@ -61,8 +61,8 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
         wavelength = self.get_mean_wavelength() # meters
 
-        x = intensity_histogram['bin_h_center']*shadow_to_meters # in meters
-        y = intensity_histogram['bin_v_center']*shadow_to_meters # in meters
+        x = intensity_histogram['bin_h_center'] * shadow_to_meters # in meters
+        y = intensity_histogram['bin_v_center'] * shadow_to_meters # in meters
 
         wavefront = GenericWavefront2D.initialize_wavefront_from_range(x[0],
                                                                        x[-1],
@@ -71,13 +71,14 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
                                                                        number_of_points=(x.size, y.size),
                                                                        wavelength=wavelength)
 
-        # TODO: check normalization and add smoothing
-        complex_amplitude_modulus = self.smooth_amplitude(amplitude=numpy.sqrt(intensity_histogram['histogram'] / intensity_histogram['histogram'].max()),
-                                                          pixels_h=pixels_h,
-                                                          pixels_v=pixels_v)
+        #
+        # AMPLITUDE (NORMALIZATION AND SMOOTHING)
+        #
 
-
-        # TODO: phase must be calculate from directions !!!!!
+        amplitude = numpy.sqrt(intensity_histogram['histogram'] / intensity_histogram['histogram'].max())
+        amplitude = SHADOW3Wavefront.smooth_amplitude(amplitude=amplitude,
+                                                      pixels_h=pixels_h,
+                                                      pixels_v=pixels_v)
 
         xp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=4,
                                    xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
@@ -91,32 +92,35 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         kx = xp_histogram['histogram'] * k_modulus
         ky = yp_histogram['histogram'] * k_modulus
 
-        complex_amplitude_phase = numpy.zeros(shape=(pixels_h, pixels_v))
+        phase = numpy.zeros(shape=(pixels_h, pixels_v))
 
         for i in range(0, pixels_h):
             for j in range(0, pixels_v):
-                #complex_amplitude_phase[i, j] = numpy.trapz(kx[:, j], x) + numpy.trapz(ky[i, :], y)
-                complex_amplitude_phase[i, j] = kx[i, j]*x[i] + ky[i, j]*y[j]
+                phase[i, j] = (numpy.trapz(y=kx[:i, 0], x=x[:i]) + \
+                               numpy.trapz(y=ky[i, :j] , x=y[:j])) % 2*numpy.pi
+                #phase[i, j] = (kx[i, j] * x[i] + ky[i, j] * y[j]) % 2*numpy.pi
 
-        complex_amplitude = complex_amplitude_modulus * numpy.exp(1j*complex_amplitude_phase)
+        complex_amplitude = amplitude * numpy.exp(1j*phase)
 
         wavefront.set_complex_amplitude(complex_amplitude)
 
         return wavefront
 
-    def smooth_amplitude(self, amplitude, pixels_h, pixels_v):
+    @classmethod
+    def smooth_amplitude(cls, amplitude, pixels_h, pixels_v):
         kern_hanning = signal.hanning(max(5, int(pixels_h/10)))[:, None]
         kern_hanning /= kern_hanning.sum()
 
         kern_hanning_2 = signal.hanning(max(5, int(pixels_v/10)))[None, :]
         kern_hanning_2 /= kern_hanning.sum()
 
-        return self.rebin(array=signal.convolve(signal.convolve(amplitude,
-                                                                kern_hanning),
-                                                kern_hanning_2),
-                          new_shape=(pixels_h, pixels_v))
+        return cls.rebin(array=signal.convolve(signal.convolve(amplitude,
+                                                               kern_hanning),
+                                               kern_hanning_2),
+                         new_shape=(pixels_h, pixels_v))
 
-    def rebin(self, array=numpy.zeros((100, 100)), new_shape=(100, 100)):
+    @classmethod
+    def rebin(cls, array=numpy.zeros((100, 100)), new_shape=(100, 100)):
         assert len(array.shape) == len(new_shape)
 
         slices = [slice(0, old, float(old) / new) for old, new in zip(array.shape, new_shape)]
@@ -131,9 +135,9 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
         meters_to_shadow = 1/shadow_to_meters
 
-        w_intensity = wavefront.get_intensity()
-        w_x = wavefront.get_mesh_x()
-        w_y = wavefront.get_mesh_y()
+        w_intensity = wavefront.get_intensity().flatten()
+        w_x = wavefront.get_mesh_x().flatten()
+        w_y = wavefront.get_mesh_y().flatten()
         w_phase = wavefront.get_phase()
         w_wavelength = wavefront.get_wavelength() # meters
         k_modulus =  2 * numpy.pi / w_wavelength # m-1
@@ -142,8 +146,8 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         wf3 = SHADOW3Wavefront(N=nrays)
 
         # positions
-        wf3.rays[:, 0] = w_x.flatten() * meters_to_shadow # cm
-        wf3.rays[:, 2] = w_y.flatten() * meters_to_shadow # cm
+        wf3.rays[:, 0] = w_x * meters_to_shadow # cm
+        wf3.rays[:, 2] = w_y * meters_to_shadow # cm
 
         # Lost ray flag
         wf3.rays[:, 9] = 1.0
@@ -152,14 +156,13 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         # Ray index
         wf3.rays[:, 11] = numpy.arange(1, nrays+1, 1)
 
-        normalization = nrays/numpy.sum(w_intensity.flatten()) # Shadow-like intensity
+        normalization = nrays/numpy.sum(w_intensity) # Shadow-like intensity
 
         # intensity
         # TODO: now we suppose fully polarized beam
-        wf3.rays[:, 6] = numpy.sqrt(w_intensity.flatten()*normalization)
+        wf3.rays[:, 6] = numpy.sqrt(w_intensity*normalization)
 
-        dx = numpy.abs(w_x[1, 0] - w_x[0, 0])
-        dy = numpy.abs(w_y[0, 1] - w_y[0, 0])
+        dx, dy  = wavefront.delta()
 
         # The k direction is obtained from the gradient of the phase
         kx, kz = numpy.gradient(w_phase, dx, dy, edge_order=2)
