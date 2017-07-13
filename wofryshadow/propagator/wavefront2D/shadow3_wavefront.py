@@ -62,13 +62,13 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         wavelength = self.get_mean_wavelength() # meters
 
         x = intensity_histogram['bin_h_center'] * shadow_to_meters # in meters
-        y = intensity_histogram['bin_v_center'] * shadow_to_meters # in meters
+        z = intensity_histogram['bin_v_center'] * shadow_to_meters # in meters
 
         wavefront = GenericWavefront2D.initialize_wavefront_from_range(x[0],
                                                                        x[-1],
-                                                                       y[0],
-                                                                       y[-1],
-                                                                       number_of_points=(x.size, y.size),
+                                                                       z[0],
+                                                                       z[-1],
+                                                                       number_of_points=(x.size, z.size),
                                                                        wavelength=wavelength)
 
         #
@@ -80,25 +80,29 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
                                                       pixels_h=pixels_h,
                                                       pixels_v=pixels_v)
 
+        #
+        # PHASE
+        #
+
         xp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=4,
                                    xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
                                    nolost=1)
-        yp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=6,
+
+        zp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=6,
                                    xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
                                    nolost=1)
 
         k_modulus = 2*numpy.pi/wavelength # meters
 
-        kx = xp_histogram['histogram'] * k_modulus
-        ky = yp_histogram['histogram'] * k_modulus
+        xp = xp_histogram['histogram']
+        zp = zp_histogram['histogram']
 
         phase = numpy.zeros(shape=(pixels_h, pixels_v))
 
         for i in range(0, pixels_h):
             for j in range(0, pixels_v):
-                phase[i, j] = (numpy.trapz(y=kx[:i, 0], x=x[:i]) + \
-                               numpy.trapz(y=ky[i, :j] , x=y[:j])) % 2*numpy.pi
-                #phase[i, j] = (kx[i, j] * x[i] + ky[i, j] * y[j]) % 2*numpy.pi
+                #phase[i, j] = numpy.trapz(y=kx[:i, 0], x=z[:i]) + numpy.trapz(y=ky[i, :j] , x=z[:j])
+                phase[i, j] = (xp[i, j] * x[i] + zp[i, j] * z[j]) * k_modulus
 
         complex_amplitude = amplitude * numpy.exp(1j*phase)
 
