@@ -95,6 +95,7 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         # PHASE (consider Kx and Kz as the partial derivate of the phase)
         #
 
+        '''
         xp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=4,
                                    xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
                                    nolost=1)
@@ -102,21 +103,30 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         zp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=6,
                                    xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
                                    nolost=1)
+        '''
+
+        optical_path = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=13,
+                                   xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
+                                   nolost=1)
 
         k_modulus = 2*numpy.pi/wavelength # meters
 
+        '''
         xp = xp_histogram['histogram']
         zp = zp_histogram['histogram']
 
         kx = xp * k_modulus
         kz = zp * k_modulus
+        '''
 
-        phase = numpy.zeros(shape=(pixels_h, pixels_v))
+        phase = (k_modulus*(optical_path['histogram']*shadow_to_meters)) % 2*numpy.pi
 
+        '''
         for i in range(0, pixels_h):
             for j in range(0, pixels_v):
                 #phase[i, j] = numpy.trapz(y=kx[:i, 0], x=x[:i]) + numpy.trapz(y=kz[i, :j] , x=z[:j])
                 phase[i, j] = kx[i, j]*x[i] + kz[i, j]*z[j]
+        '''
 
         complex_amplitude = amplitude * numpy.exp(1j*phase)
 
