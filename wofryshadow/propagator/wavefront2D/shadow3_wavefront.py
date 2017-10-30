@@ -9,16 +9,17 @@ from wofry.propagator.wavefront import WavefrontDimension
 
 class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
-    def __init__(self, N=250000):
-        Shadow.Beam.__init__(self,N=N)
+    def __init__(self, N=250000, user_units_to_meters = 0.01):
+        Shadow.Beam.__init__(self, N=N)
+
+        self._user_units_to_meters = user_units_to_meters
 
     @classmethod
-    def initialize_from_shadow3_beam(cls,shadow3_beam):
+    def initialize_from_shadow3_beam(cls, shadow3_beam, user_units_to_meters = 0.01):
         wf3 = SHADOW3Wavefront(N=shadow3_beam.nrays())
         wf3.rays = shadow3_beam.rays.copy()
 
         return wf3
-
 
     def get_mean_wavelength(self, nolost=True): # meters
         wavelength_in_angstroms = self.getshcol(19, nolost=nolost)
@@ -73,6 +74,28 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         x = intensity_histogram['bin_h_center'] * shadow_to_meters # in meters
         z = intensity_histogram['bin_v_center'] * shadow_to_meters # in meters
 
+        number_of_rays_histogram = self.histo2(1, 3,
+                                               nbins_h=pixels_h,
+                                               nbins_v=pixels_v,
+                                               ref=0,
+                                               xrange=[-0.5*range_h, 0.5*range_h],
+                                               yrange=[-0.5*range_v, 0.5*range_v],
+                                               nolost=1)
+
+        good = numpy.where(number_of_rays_histogram ['histogram'] > 0)
+
+
+        phase_histogram = self.histo2(1, 3,
+                                      nbins_h=pixels_h,
+                                      nbins_v=pixels_v,
+                                      ref=40,
+                                      xrange=[-0.5*range_h, 0.5*range_h],
+                                      yrange=[-0.5*range_v, 0.5*range_v],
+                                      nolost=1)
+
+        phase = numpy.zeros(phase_histogram['histogram'].shape)
+        phase[good] = phase_histogram['histogram'][good] / number_of_rays_histogram['histogram'][good]
+
         #
         # AMPLITUDE (NORMALIZATION AND SMOOTHING)
         #
@@ -81,8 +104,6 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         amplitude = SHADOW3Wavefront.smooth_amplitude(amplitude=amplitude,
                                                       pixels_h=pixels_h,
                                                       pixels_v=pixels_v)
-
-        #amplitude, new_x, new_z = SHADOW3Wavefront.spline_2D(x=x, y=z, z=amplitude)
 
         wavefront = GenericWavefront2D.initialize_wavefront_from_range(x[0],
                                                                        x[-1],
@@ -95,44 +116,39 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         # PHASE (consider Kx and Kz as the partial derivate of the phase)
         #
 
-        '''
-        xp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=4,
-                                   xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
-                                   nolost=1)
-
-        zp_histogram = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=6,
-                                   xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
-                                   nolost=1)
-        '''
-
-        optical_path = self.histo2(1, 3, nbins_h=pixels_h, nbins_v=pixels_v, ref=13,
-                                   xrange=[-0.5*range_h, 0.5*range_h], yrange=[-0.5*range_v, 0.5*range_v],
-                                   nolost=1)
-
-        k_modulus = 2*numpy.pi/wavelength # meters
-
-        '''
-        xp = xp_histogram['histogram']
-        zp = zp_histogram['histogram']
-
-        kx = xp * k_modulus
-        kz = zp * k_modulus
-        '''
-
-        phase = (k_modulus*(optical_path['histogram']*shadow_to_meters)) % 2*numpy.pi
-
-        '''
-        for i in range(0, pixels_h):
-            for j in range(0, pixels_v):
-                #phase[i, j] = numpy.trapz(y=kx[:i, 0], x=x[:i]) + numpy.trapz(y=kz[i, :j] , x=z[:j])
-                phase[i, j] = kx[i, j]*x[i] + kz[i, j]*z[j]
-        '''
-
         complex_amplitude = amplitude * numpy.exp(1j*phase)
 
         wavefront.set_complex_amplitude(complex_amplitude)
 
         return wavefront
+
+    def getshonecol(self, col, nolost=0):
+        if col == 40:
+            #optical_path = self.rays[:, 12] * self._user_units_to_meters * 100 # to cm
+            optical_path = self.rays[:, 12] * self._user_units_to_meters * 10 # to cm
+            k = self.rays[:, 10] # in cm
+
+            column = ((optical_path * k) % 2*numpy.pi) - numpy.pi
+
+            print(self._user_units_to_meters, optical_path, k, column)
+
+            if nolost == 0:
+                return column.copy()
+
+            if nolost == 1:
+                f = numpy.where(self.rays[:,9] > 0.0)
+                if len(f[0]) == 0:
+                    return numpy.empty(0)
+                return column[f].copy()
+
+            if nolost == 2:
+                f = numpy.where(self.rays[:,9] < 0.0)
+                if len(f[0]) == 0:
+                    return numpy.empty(0)
+                return column[f].copy()
+        else:
+            return super().getshonecol(col, nolost)
+
 
     @classmethod
     def fromGenericWavefront(cls, wavefront, shadow_to_meters = 1e-2):
@@ -216,53 +232,6 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
         indices = coordinates.astype('i')   #choose the biggest smaller integer index
 
         return array[tuple(indices)]
-
-
-    @classmethod
-    def polyfit2d(cls, x, y, z, order=3):
-        ncols = (order + 1)**2
-        G = numpy.zeros((x.size, ncols))
-        ij = itertools.product(range(order+1), range(order+1))
-
-        for k, (i,j) in enumerate(ij):
-            G[:,k] = x**i * y**j
-        m, _, _, _ = numpy.linalg.lstsq(G, z)
-
-        return m
-
-    @classmethod
-    def polyval2d(cls, x, y, m):
-        order = int(numpy.sqrt(len(m))) - 1
-        ij = itertools.product(range(order+1), range(order+1))
-        z = numpy.zeros_like(x)
-
-        for a, (i,j) in zip(m, ij):
-            z += a * x**i * y**j
-
-        return z
-
-    @classmethod
-    def spline_2D(cls, x=numpy.zeros(100), y=numpy.zeros(100), z=numpy.zeros((100, 100)), method='cubic'):
-        n_h, n_v = z.shape
-
-        xx, yy = numpy.meshgrid(x, y)
-
-        points = numpy.zeros((n_h*n_h, 2))
-        points [:, 0] = xx.flatten()
-        points [:, 1] = yy.flatten()
-
-        grid_x, grid_y = numpy.mgrid[x[0]:x[-1]:complex(n_h*5,0), y[0]:y[-1]:complex(n_v*5,0)]
-
-        z_spline =  griddata(points=points,
-                             values=z.flatten(),
-                             xi=(grid_x, grid_y),
-                             method=method,
-                             fill_value=0.0)
-
-        z_spline /= z_spline.max()
-
-        return z_spline, grid_x[:, 0], grid_y[0, :]
-
 
 
 if __name__=="__main__":
