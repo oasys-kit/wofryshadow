@@ -11,7 +11,7 @@ except AttributeError:
 
 NAME = 'wofryshadow'
 
-VERSION = '1.0.0'
+VERSION = '1.0.1'
 ISRELEASED = False
 
 DESCRIPTION = 'WOFRY (Wave Optics FRamework in pYthon) for SHADOW'
