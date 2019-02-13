@@ -11,12 +11,11 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
     def __init__(self, N=250000, user_units_to_meters = 0.01):
         Shadow.Beam.__init__(self, N=N)
-
         self._user_units_to_meters = user_units_to_meters
 
     @classmethod
     def initialize_from_shadow3_beam(cls, shadow3_beam, user_units_to_meters = 0.01):
-        wf3 = SHADOW3Wavefront(N=shadow3_beam.nrays())
+        wf3 = SHADOW3Wavefront(N=shadow3_beam.nrays(), user_units_to_meters=user_units_to_meters)
         wf3.rays = shadow3_beam.rays.copy()
 
         return wf3
@@ -124,13 +123,10 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
     def getshonecol(self, col, nolost=0):
         if col == 40:
-            #optical_path = self.rays[:, 12] * self._user_units_to_meters * 100 # to cm
-            optical_path = self.rays[:, 12] * self._user_units_to_meters * 10 # to cm
+            optical_path = self.rays[:, 12] * self._user_units_to_meters * 100 # to cm
             k = self.rays[:, 10] # in cm
 
-            column = ((optical_path * k) % 2*numpy.pi) - numpy.pi
-
-            print(self._user_units_to_meters, optical_path, k, column)
+            column = ((optical_path * k) % (2*numpy.pi)) - numpy.pi
 
             if nolost == 0:
                 return column.copy()
