@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import imp
+from importlib.machinery import SourceFileLoader
 import os
 import subprocess
 
@@ -11,7 +11,7 @@ except AttributeError:
 
 NAME = 'wofryshadow'
 
-VERSION = '1.0.2'
+VERSION = '1.0.3'
 ISRELEASED = False
 
 DESCRIPTION = 'WOFRY (Wave Optics FRamework in pYthon) for SHADOW'
@@ -109,7 +109,7 @@ if not release:
         GIT_REVISION = git_version()
     elif os.path.exists('wofryshadow/version.py'):
         # must be a source distribution, use existing version file
-        version = imp.load_source("wofryshadow.version", "wofryshadow/version.py")
+        version = SourceFileLoader("wofryshadow.version", "wofryshadow/version.py").load_module()
         GIT_REVISION = version.git_revision
     else:
         GIT_REVISION = "Unknown"
