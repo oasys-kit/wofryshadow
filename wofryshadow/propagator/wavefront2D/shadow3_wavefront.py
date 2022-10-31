@@ -208,10 +208,10 @@ class SHADOW3Wavefront(Shadow.Beam, WavefrontDecorator):
 
     @classmethod
     def smooth_amplitude(cls, amplitude, pixels_h, pixels_v):
-        kern_hanning = signal.hanning(max(5, int(pixels_h/10)))[:, None]
+        kern_hanning = numpy.hanning(max(5, int(pixels_h/10)))[:, None]
         kern_hanning /= kern_hanning.sum()
 
-        kern_hanning_2 = signal.hanning(max(5, int(pixels_v/10)))[None, :]
+        kern_hanning_2 = numpy.hanning(max(5, int(pixels_v/10)))[None, :]
         kern_hanning_2 /= kern_hanning.sum()
 
         return cls.rebin(array=signal.convolve(signal.convolve(amplitude,
